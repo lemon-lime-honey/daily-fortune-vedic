@@ -3,7 +3,7 @@
 ## 1. 기반 설정 및 인프라 구축
 
 - [x] 1-1. 환경변수 구성 (`.env.example`, `.env`)
-- [ ] 1-2. 도커 오케스트레이션 설계 (`docker-compose.yml`, 각 서비스 Dockerfile)
+- [x] 1-2. 도커 오케스트레이션 설계 (`docker-compose.yml`, 각 서비스 Dockerfile)
 
 ## 2. calc 서비스 개발 (Rust/Axum)
 

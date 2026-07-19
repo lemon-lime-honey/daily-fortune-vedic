@@ -32,8 +32,14 @@ defmodule Api.LlmClient do
         ]
       }
 
-      case Req.post(url, json: body, params: [key: api_key]) do
-        {:ok, %Req.Response{status: 200, body: %{"candidates" => [%{"content" => %{"parts" => [%{"text" => text}]}} | _]}}} ->
+      case Req.post(url, json: body, params: [key: api_key], receive_timeout: 90_000) do
+        {:ok, %Req.Response{status: 200, body: %{"candidates" => [%{"content" => %{"parts" => parts}} | _]}}} ->
+          text =
+            parts
+            |> Enum.reject(fn p -> Map.get(p, "thought") == true end)
+            |> Enum.map(fn p -> Map.get(p, "text") || "" end)
+            |> Enum.join("")
+
           {:ok, text}
 
         {:ok, %Req.Response{status: status, body: body}} ->

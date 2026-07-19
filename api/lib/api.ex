@@ -1,6 +1,6 @@
-defmodule DailyFortuneVedic do
+defmodule Api do
   @moduledoc """
-  Documentation for `DailyFortuneVedic`.
+  Documentation for `Api`.
   """
 
   @doc """
@@ -8,7 +8,7 @@ defmodule DailyFortuneVedic do
 
   ## Examples
 
-      iex> DailyFortuneVedic.hello()
+      iex> Api.hello()
       :world
 
   """

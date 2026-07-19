@@ -1,9 +1,9 @@
-defmodule DailyFortuneVedic.MixProject do
+defmodule Api.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :daily_fortune_vedic,
+      app: :api,
       version: "0.1.0",
       elixir: "~> 1.20",
       start_permanent: Mix.env() == :prod,
@@ -14,7 +14,8 @@ defmodule DailyFortuneVedic.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger],
+      mod: {Api.Application, []}
     ]
   end
 

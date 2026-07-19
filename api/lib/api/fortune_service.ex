@@ -31,12 +31,13 @@ defmodule Api.FortuneService do
       birth_time = System.get_env("BIRTH_TIME") || "12:00:00"
       birth_lat = Float.parse(System.get_env("BIRTH_LAT") || "37.5665") |> elem(0)
       birth_lon = Float.parse(System.get_env("BIRTH_LON") || "126.9780") |> elem(0)
-      tz_offset = Float.parse(System.get_env("TARGET_TZ_OFFSET") || "9.0") |> elem(0)
+      birth_tz_offset = Float.parse(System.get_env("BIRTH_TZ_OFFSET") || "9.0") |> elem(0)
+      target_tz_offset = Float.parse(System.get_env("TARGET_TZ_OFFSET") || "9.0") |> elem(0)
 
       [year, month, day] = String.split(birth_date, "-") |> Enum.map(&String.to_integer/1)
       [hour, minute, _] = String.split(birth_time, ":") |> Enum.map(&String.to_integer/1)
 
-      local_now = DateTime.add(DateTime.utc_now(), trunc(tz_offset * 3600), :second)
+      local_now = DateTime.add(DateTime.utc_now(), trunc(target_tz_offset * 3600), :second)
       local_date = DateTime.to_date(local_now)
 
       params = %{
@@ -47,10 +48,11 @@ defmodule Api.FortuneService do
         "minute" => minute,
         "latitude" => birth_lat,
         "longitude" => birth_lon,
-        "tz_offset" => tz_offset,
+        "tz_offset" => birth_tz_offset,
         "target_year" => local_date.year,
         "target_month" => local_date.month,
-        "target_day" => local_date.day
+        "target_day" => local_date.day,
+        "target_tz_offset" => target_tz_offset
       }
 
       CalcClient.calculate_chart(params)

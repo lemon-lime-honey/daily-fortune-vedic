@@ -98,8 +98,12 @@ pub async fn calculate_chart(Json(payload): Json<ChartRequest>) -> Result<Json<C
     let dasha = dasha::vimshottari::compute_vimshottari(moon_sidereal_lon, natal_jd, 2);
 
     // 3. Transit Chart Fallbacks
-    let target_hour = payload.target_hour.unwrap_or(12);
-    let target_minute = payload.target_minute.unwrap_or(0);
+    let target_hour = payload.target_hour
+        .or_else(|| env::var("TARGET_HOUR").ok().and_then(|v| v.parse::<u32>().ok()))
+        .unwrap_or(12);
+    let target_minute = payload.target_minute
+        .or_else(|| env::var("TARGET_MINUTE").ok().and_then(|v| v.parse::<u32>().ok()))
+        .unwrap_or(0);
     
     let target_tz_offset = payload.target_tz_offset
         .or_else(|| env::var("TARGET_TZ_OFFSET").ok().and_then(|v| v.parse::<f64>().ok()))

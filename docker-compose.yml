@@ -5,8 +5,8 @@ services:
       dockerfile: Dockerfile
     expose:
       - "8080"
-    environment:
-      - PORT=8080
+    env_file:
+      - .env
 
   api:
     build:

@@ -3,6 +3,7 @@ services:
     build:
       context: ./calc
       dockerfile: Dockerfile
+    container_name: calc
     expose:
       - "8080"
     env_file:
@@ -12,6 +13,7 @@ services:
     build:
       context: ./api
       dockerfile: Dockerfile
+    container_name: api
     env_file:
       - .env
     depends_on:

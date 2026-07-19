@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use vedaksha::prelude::{ComputedChart, dasha::vimshottari::VimshottariDasha};
 
 #[derive(Debug, Deserialize)]
 pub struct ChartRequest {
@@ -16,5 +17,6 @@ pub struct ChartRequest {
 pub struct ChartResponse {
     pub status: String,
     pub message: String,
-    // TODO: Add actual ComputedChart field in Step 2-2
+    pub chart: ComputedChart,
+    pub dasha: VimshottariDasha,
 }

@@ -7,9 +7,9 @@
 
 ## 2. calc 서비스 개발 (Rust/Axum)
 
-- [ ] 2-1. API 서버 스캐폴딩 (Axum HTTP POST 엔드포인트)
-- [ ] 2-2. 점성술 라이브러리 연동 (vedaksha 차트 계산 로직)
-- [ ] 2-3. 에러 핸들링 고도화 (JSON 응답 규격 적용)
+- [x] 2-1. API 서버 스캐폴딩 (Axum HTTP POST 엔드포인트)
+- [x] 2-2. 점성술 라이브러리 연동 (vedaksha 차트 계산 로직)
+- [x] 2-3. 에러 핸들링 고도화 (JSON 응답 규격 적용)
 
 ## 3. api 서비스 개발 (Elixir)
 

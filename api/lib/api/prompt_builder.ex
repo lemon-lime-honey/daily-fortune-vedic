@@ -34,9 +34,9 @@ defmodule Api.PromptBuilder do
     """
     You are a professional Vedic Astrologer. Generate a daily fortune reading in Korean (한국어) based on the following birth and transit details.
 
-    ### Birth Details (Natal Chart)
+    # Birth details
     - Ascendant (Lagna): #{asc_sign}
-    - Birth Nakshatra: #{dasha["moon_nakshatra"]["name"]}
+    - Birth Nakshatra: #{dasha["moon_nakshatra"]}
     - Planet Positions:
     #{natal_planets_str}
 

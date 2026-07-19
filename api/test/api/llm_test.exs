@@ -18,7 +18,7 @@ defmodule Api.LlmTest do
       ]
     },
     "dasha" => %{
-      "moon_nakshatra" => %{"name" => "Moola"},
+      "moon_nakshatra" => "Moola",
       "maha_dashas" => [
         %{
           "lord" => "Ketu",

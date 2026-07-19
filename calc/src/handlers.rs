@@ -148,7 +148,7 @@ pub async fn calculate_chart(Json(payload): Json<ChartRequest>) -> Result<Json<C
     // Find transit Moon house
     let transit_moon_house = transit_chart.planets.iter()
         .find(|p| p.name == "Moon")
-        .map(|p| format!("Moon in {} House", p.house))
+        .map(|p| format!("{}", p.house))
         .unwrap_or_else(|| "Unknown".to_string());
 
     Ok(Json(ChartResponse {

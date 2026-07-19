@@ -33,17 +33,7 @@ defmodule Api.Scheduler do
   end
 
   defp schedule_next_run() do
-    # For testing/demo, we can configure a short interval (e.g. in seconds) via env.
-    # Otherwise, calculate milliseconds until the next occurrence of TARGET_HOUR:TARGET_MINUTE.
-    interval_sec = System.get_env("SCHEDULER_INTERVAL_SEC")
-
-    ms_to_wait =
-      if interval_sec && interval_sec != "" do
-        String.to_integer(interval_sec) * 1000
-      else
-        calculate_ms_to_next_target()
-      end
-
+    ms_to_wait = calculate_ms_to_next_target()
     Logger.info("Next pipeline run scheduled in #{ms_to_wait / 1000} seconds.")
     Process.send_after(self(), :run_pipeline, ms_to_wait)
   end

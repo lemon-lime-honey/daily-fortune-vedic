@@ -26,6 +26,8 @@ defmodule Api.CalcClientTest do
           assert is_map(response["natal_chart"])
           assert is_map(response["transit_chart"])
           assert is_map(response["dasha"])
+          assert is_binary(response["current_dasha"])
+          assert is_binary(response["transit_moon_house"])
 
         {:error, reason} ->
           flunk("Failed to call calc service: #{inspect(reason)}. Is the calc server running?")

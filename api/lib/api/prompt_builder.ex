@@ -52,10 +52,12 @@ defmodule Api.PromptBuilder do
     2. Provide a detailed, insightful, and practical daily fortune reading.
     3. The tone must be professional, reassuring, yet realistic.
     4. Write the output entirely in Korean.
-    5. Do not include any markdown format or headers. Write in a natural flowing paragraph format.
-    6. Never use exclamation marks (!) in the Korean response.
-    7. Use arabic numbers (e.g. 3) instead of Korean number words (e.g. 셋) when expressing numeric values.
-    8. Maximum length: 3-4 paragraphs.
+    5. Never use exclamation marks (!) in the Korean response.
+    6. Use arabic numbers (e.g. 3) instead of Korean number words (e.g. 셋) when expressing numeric values.
+    7. You MUST return the output as a raw JSON object containing exactly three keys:
+       - "score": An integer between 0 and 100 representing the daily fortune score.
+       - "keyword": A short string (1 sentence, max 10 words) summarizing the core theme of today's fortune (e.g., "정서적 안정이 필요한 날").
+       - "fortune": The detailed daily fortune reading (3-4 paragraphs, no headers, no markdown, natural flowing text in Korean).
     """
   end
 

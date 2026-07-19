@@ -1,20 +1,20 @@
 defmodule Api.NotionClient do
   @moduledoc """
-  Client for interacting with the Notion API.
+  Client for interacting with the Notion API to create pages in a database.
   """
 
   @doc """
-  Appends fortune content to a Notion page.
+  Creates a new page in a Notion database with the fortune content and structured metadata.
   """
-  def append_fortune(title, content) do
+  def append_fortune(title, content, metadata) do
     api_key = System.get_env("NOTION_API_KEY")
-    page_id = System.get_env("NOTION_TARGET_ID")
+    database_id = System.get_env("NOTION_TARGET_ID")
 
     if is_nil(api_key) or api_key == "" or api_key == "mock_notion_key" do
       # Mock success during testing/dev if no key is configured
-      {:ok, %{"object" => "list", "results" => []}}
+      {:ok, %{"object" => "page", "id" => "mock_page_id"}}
     else
-      url = "https://api.notion.com/v1/blocks/#{page_id}/children"
+      url = "https://api.notion.com/v1/pages"
 
       headers = [
         {"Authorization", "Bearer #{api_key}"},
@@ -23,19 +23,35 @@ defmodule Api.NotionClient do
       ]
 
       body = %{
-        "children" => [
-          %{
-            "object" => "block",
-            "type" => "heading_2",
-            "heading_2" => %{
-              "rich_text" => [
-                %{
-                  "type" => "text",
-                  "text" => %{"content" => title}
-                }
-              ]
-            }
+        "parent" => %{"database_id" => database_id},
+        "properties" => %{
+          "Name" => %{
+            "title" => [
+              %{
+                "type" => "text",
+                "text" => %{"content" => title}
+              }
+            ]
           },
+          "Date" => %{
+            "date" => %{"start" => metadata.date}
+          },
+          "Dasha" => %{
+            "rich_text" => [
+              %{
+                "type" => "text",
+                "text" => %{"content" => metadata.dasha}
+              }
+            ]
+          },
+          "Transit Moon" => %{
+            "select" => %{"name" => metadata.transit_moon}
+          },
+          "Score" => %{
+            "number" => metadata.score
+          }
+        },
+        "children" => [
           %{
             "object" => "block",
             "type" => "paragraph",
@@ -51,7 +67,7 @@ defmodule Api.NotionClient do
         ]
       }
 
-      case Req.patch(url, json: body, headers: headers) do
+      case Req.post(url, json: body, headers: headers) do
         {:ok, %Req.Response{status: 200, body: body}} ->
           {:ok, body}
 

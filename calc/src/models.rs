@@ -27,4 +27,6 @@ pub struct ChartResponse {
     pub natal_chart: ComputedChart,
     pub transit_chart: ComputedChart,
     pub dasha: VimshottariDasha,
+    pub current_dasha: String,
+    pub transit_moon_house: String,
 }

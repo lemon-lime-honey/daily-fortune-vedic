@@ -130,12 +130,35 @@ pub async fn calculate_chart(Json(payload): Json<ChartRequest>) -> Result<Json<C
 
     let transit_chart = calculate_planets_and_houses(transit_jd, transit_lat, transit_lon)?;
 
+    // Find active dasha at transit_jd
+    let active_dasha = dasha.maha_dashas.iter()
+        .find(|md| transit_jd >= md.start_jd && transit_jd <= md.end_jd);
+
+    let current_dasha = if let Some(md) = active_dasha {
+        let active_antar = md.sub_periods.iter()
+            .find(|sd| transit_jd >= sd.start_jd && transit_jd <= sd.end_jd);
+        match active_antar {
+            Some(sd) => format!("{:?} - {:?}", md.lord, sd.lord),
+            None => format!("{:?}", md.lord),
+        }
+    } else {
+        "Unknown".to_string()
+    };
+
+    // Find transit Moon house
+    let transit_moon_house = transit_chart.planets.iter()
+        .find(|p| p.name == "Moon")
+        .map(|p| format!("Moon in {} House", p.house))
+        .unwrap_or_else(|| "Unknown".to_string());
+
     Ok(Json(ChartResponse {
         status: "success".to_string(),
         message: "Calculated chart successfully".to_string(),
         natal_chart,
         transit_chart,
         dasha,
+        current_dasha,
+        transit_moon_house,
     }))
 }
 
@@ -171,6 +194,8 @@ mod tests {
         let response = result.unwrap().0;
         assert_eq!(response.status, "success");
         assert_eq!(response.message, "Calculated chart successfully");
+        assert!(!response.current_dasha.is_empty());
+        assert!(!response.transit_moon_house.is_empty());
         
         let planets = response.natal_chart.planets;
         assert!(planets.iter().any(|p| p.name == "Sun"));

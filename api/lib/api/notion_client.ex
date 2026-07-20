@@ -49,6 +49,53 @@ defmodule Api.NotionClient do
           },
           "Score" => %{
             "number" => metadata.score
+          },
+          "Tithi" => %{
+            "rich_text" => [
+              %{
+                "type" => "text",
+                "text" => %{"content" => metadata.tithi}
+              }
+            ]
+          },
+          "Nakshatra" => %{
+            "rich_text" => [
+              %{
+                "type" => "text",
+                "text" => %{"content" => metadata.nakshatra}
+              }
+            ]
+          },
+          "Yoga" => %{
+            "rich_text" => [
+              %{
+                "type" => "text",
+                "text" => %{"content" => metadata.yoga}
+              }
+            ]
+          },
+          "Karana" => %{
+            "rich_text" => [
+              %{
+                "type" => "text",
+                "text" => %{"content" => metadata.karana}
+              }
+            ]
+          },
+          "Weekday" => %{
+            "select" => %{"name" => metadata.weekday}
+          },
+          "Tara Bala" => %{
+            "select" => %{"name" => metadata.tara_bala}
+          },
+          "Transit Moon SAV" => %{
+            "number" => metadata.transit_moon_sav
+          },
+          "Transit Moon BAV" => %{
+            "number" => metadata.transit_moon_bav
+          },
+          "Activated Triggers" => %{
+            "multi_select" => Enum.map(metadata.activated_triggers, &%{"name" => &1})
           }
         },
         "children" => [

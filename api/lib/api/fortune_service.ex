@@ -12,7 +12,9 @@ defmodule Api.FortuneService do
     Logger.info("Starting daily fortune pipeline...")
 
     with {:ok, calc_data} <- get_chart_data_with_retry(),
+         _ <- Logger.info("DEBUG: Raw Calc Data from Rust:\n#{inspect(calc_data, pretty: true)}"),
          prompt <- PromptBuilder.build_prompt(calc_data),
+         _ <- Logger.info("DEBUG: Generated LLM Prompt:\n#{prompt}"),
          {:ok, raw_fortune_text} <- generate_fortune_with_retry(prompt),
          {:ok, parsed_json} <- parse_llm_response(raw_fortune_text),
          {:ok, _notion_response} <- upload_to_notion_with_retry(calc_data, parsed_json) do
@@ -74,16 +76,29 @@ defmodule Api.FortuneService do
 
       dasha_str = calc_data["current_dasha"] || "Unknown"
       transit_moon = calc_data["transit_moon_house"] || "Unknown"
+      metrics = calc_data["daily_metrics"] || %{}
 
-      title = parsed_json["keyword"] || "#{date_str} 일일 운세"
+      title = parsed_json["keyword"] || "오늘의 운세"
       content = parsed_json["fortune"] || "운세 내용 없음"
       score = parsed_json["score"] || 50
+
+      triggers_list = metrics["activated_triggers"] || []
+      activated_triggers = Enum.map(triggers_list, & &1["name"]) |> Enum.uniq()
 
       metadata = %{
         date: date_str,
         dasha: dasha_str,
         transit_moon: transit_moon,
-        score: score
+        score: score,
+        tithi: metrics["tithi"] || "Unknown",
+        nakshatra: metrics["nakshatra"] || "Unknown",
+        yoga: metrics["yoga"] || "Unknown",
+        karana: metrics["karana"] || "Unknown",
+        weekday: metrics["weekday"] || "Unknown",
+        tara_bala: metrics["tara_bala_category"] || "Unknown",
+        transit_moon_sav: metrics["transit_moon_sav"] || 0,
+        transit_moon_bav: metrics["transit_moon_bav"] || 0,
+        activated_triggers: activated_triggers
       }
 
       NotionClient.append_fortune(title, content, metadata)

@@ -12,6 +12,7 @@ defmodule Api.LlmTest do
       ]
     },
     "transit_chart" => %{
+      "lagna_sign" => 1,
       "planets" => [
         %{"name" => "Sun", "sign" => "Cancer", "house" => 4},
         %{"name" => "Moon", "sign" => "Virgo", "house" => 6}
@@ -37,7 +38,7 @@ defmodule Api.LlmTest do
     assert String.contains?(prompt, "Birth Nakshatra: Moola")
     assert String.contains?(prompt, "Sun: Sagittarius (House 9)")
     assert String.contains?(prompt, "Sun: Cancer (House 4)")
-    assert String.contains?(prompt, "Ketu (ends at JD 2450004.1)")
+    assert String.contains?(prompt, "Current Dasha Period:")
   end
 
   test "LlmClient.generate_content/1 returns mock result when API key is mock" do

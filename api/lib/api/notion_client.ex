@@ -113,7 +113,7 @@ defmodule Api.NotionClient do
         ]
       }
 
-      case Req.post(url, json: body, headers: headers, connect_timeout: 5_000, receive_timeout: 30_000) do
+      case Req.post(url, json: body, headers: headers, connect_options: [timeout: 5_000], receive_timeout: 30_000) do
         {:ok, %Req.Response{status: 200, body: body}} ->
           {:ok, body}
 

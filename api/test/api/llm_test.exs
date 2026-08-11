@@ -41,9 +41,8 @@ defmodule Api.LlmTest do
     assert String.contains?(prompt, "Current Dasha Period:")
   end
 
-  test "LlmClient.generate_content/1 returns mock result when API key is mock" do
-    System.put_env("LLM_API_KEY", "mock_llm_key")
-    {:ok, text} = LlmClient.generate_content("hello")
-    assert String.contains?(text, "오늘")
+  test "LlmClient.generate_content/1 returns error when API key is missing" do
+    System.put_env("LLM_API_KEY", "")
+    assert {:error, :missing_api_key} = LlmClient.generate_content("hello")
   end
 end

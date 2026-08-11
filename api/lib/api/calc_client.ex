@@ -10,7 +10,7 @@ defmodule Api.CalcClient do
     url = System.get_env("RUST_CALC_API_URL") || "http://localhost:8080"
     endpoint = "#{url}/calculate"
 
-    case Req.post(endpoint, json: params, connect_timeout: 5_000, receive_timeout: 30_000) do
+    case Req.post(endpoint, json: params, connect_options: [timeout: 5_000], receive_timeout: 30_000) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         {:ok, body}
 

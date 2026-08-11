@@ -2,8 +2,8 @@ defmodule Api.NotionClientTest do
   use ExUnit.Case, async: true
   alias Api.NotionClient
 
-  test "append_fortune/3 returns mock success when NOTION_API_KEY is mock" do
-    System.put_env("NOTION_API_KEY", "mock_notion_key")
+  test "append_fortune/3 returns error when NOTION_API_KEY is missing" do
+    System.put_env("NOTION_API_KEY", "")
     metadata = %{
       date: "2026-07-20",
       dasha: "Ketu - Venus",
@@ -19,6 +19,6 @@ defmodule Api.NotionClientTest do
       transit_moon_bav: 5,
       activated_triggers: ["Mars", "Saturn"]
     }
-    assert {:ok, _} = NotionClient.append_fortune("Test Title", "Test Content", metadata)
+    assert {:error, :missing_api_key} = NotionClient.append_fortune("Test Title", "Test Content", metadata)
   end
 end

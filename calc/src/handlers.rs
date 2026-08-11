@@ -1,5 +1,25 @@
 use axum::extract::Json;
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use serde_json::json;
+
+#[derive(Debug)]
+pub enum AppError {
+    BadRequest(String),
+    InternalError(String),
+}
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let (status, error_message) = match self {
+            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+            AppError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+        };
+        let body = Json(json!({ "error": error_message }));
+        (status, body).into_response()
+    }
+}
+
 use crate::models::{ChartRequest, ChartResponse, RelativeTransitPlanet, RelativeTransitChart, DailyMetrics, ActivatedTrigger};
 use chrono::{FixedOffset, NaiveDate, TimeZone, Utc, Datelike, Timelike};
 use vedaksha::prelude::*;
@@ -15,18 +35,18 @@ fn calculate_relative_house(longitude: f64, lagna_sign: i32) -> i32 {
     (transit_sign + 12 - lagna_sign) % 12 + 1
 }
 
-fn compute_jd(year: i32, month: u32, day: u32, hour: u32, minute: u32, tz_offset: f64) -> Result<f64, StatusCode> {
+fn compute_jd(year: i32, month: u32, day: u32, hour: u32, minute: u32, tz_offset: f64) -> Result<f64, AppError> {
     let local_datetime = NaiveDate::from_ymd_opt(year, month, day)
         .and_then(|d| d.and_hms_opt(hour, minute, 0))
-        .ok_or(StatusCode::BAD_REQUEST)?;
+        .ok_or_else(|| AppError::BadRequest("Invalid date/time/timezone".to_string()))?;
 
     let offset_seconds = (tz_offset * 3600.0) as i32;
     let offset = FixedOffset::east_opt(offset_seconds)
-        .ok_or(StatusCode::BAD_REQUEST)?;
+        .ok_or_else(|| AppError::BadRequest("Invalid date/time/timezone".to_string()))?;
 
     let dt_with_tz = offset.from_local_datetime(&local_datetime)
         .single()
-        .ok_or(StatusCode::BAD_REQUEST)?;
+        .ok_or_else(|| AppError::BadRequest("Invalid date/time/timezone".to_string()))?;
 
     let utc = dt_with_tz.with_timezone(&Utc);
 
@@ -40,7 +60,7 @@ fn compute_jd(year: i32, month: u32, day: u32, hour: u32, minute: u32, tz_offset
     Ok(calendar_to_jd(utc_year, utc_month, utc_day))
 }
 
-fn calculate_planets_and_houses(jd: f64, latitude: f64, longitude: f64) -> Result<ComputedChart, StatusCode> {
+fn calculate_planets_and_houses(jd: f64, latitude: f64, longitude: f64) -> Result<ComputedChart, AppError> {
     let provider = AnalyticalProvider::new();
     let bodies = [
         Body::Sun, Body::Moon, Body::Mercury, Body::Venus, 
@@ -50,7 +70,7 @@ fn calculate_planets_and_houses(jd: f64, latitude: f64, longitude: f64) -> Resul
     let mut planet_data = Vec::new();
     for body in bodies {
         let pos = apparent_position(&provider, body, jd)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(|e| AppError::InternalError(format!("Failed to compute position: {:?}", e)))?;
         
         planet_data.push((
             body.name().to_string(),
@@ -97,7 +117,7 @@ fn calculate_planets_and_houses(jd: f64, latitude: f64, longitude: f64) -> Resul
     Ok(compute_chart(&planet_data, ramc, latitude, eps_deg, jd, &config))
 }
 
-pub async fn calculate_chart(Json(payload): Json<ChartRequest>) -> Result<Json<ChartResponse>, StatusCode> {
+pub async fn calculate_chart(Json(payload): Json<ChartRequest>) -> Result<Json<ChartResponse>, AppError> {
     // 1. Natal JD and Chart (Tropical)
     let natal_jd = compute_jd(payload.year, payload.month, payload.day, payload.hour, payload.minute, payload.tz_offset)?;
     let mut natal_chart = calculate_planets_and_houses(natal_jd, payload.latitude, payload.longitude)?;
@@ -133,20 +153,27 @@ pub async fn calculate_chart(Json(payload): Json<ChartRequest>) -> Result<Json<C
     let moon_sidereal_lon = natal_chart.planets.iter()
         .find(|p| p.name == "Moon")
         .map(|p| p.longitude)
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+        .ok_or_else(|| AppError::InternalError("Planet missing in chart".to_string()))?;
     let dasha = dasha::vimshottari::compute_vimshottari(moon_sidereal_lon, natal_jd, 2);
 
     // 3. Transit Chart Fallbacks
-    let target_hour = payload.target_hour
-        .or_else(|| env::var("TARGET_HOUR").ok().and_then(|v| v.parse::<u32>().ok()))
-        .unwrap_or(12);
-    let target_minute = payload.target_minute
-        .or_else(|| env::var("TARGET_MINUTE").ok().and_then(|v| v.parse::<u32>().ok()))
-        .unwrap_or(0);
+    let target_hour = match payload.target_hour {
+        Some(h) => h,
+        None => env::var("TARGET_HOUR").unwrap_or_else(|_| "12".to_string())
+            .parse::<u32>().map_err(|_| AppError::BadRequest("Invalid TARGET_HOUR".to_string()))?
+    };
+    let target_minute = match payload.target_minute {
+        Some(m) => m,
+        None => env::var("TARGET_MINUTE").unwrap_or_else(|_| "0".to_string())
+            .parse::<u32>().map_err(|_| AppError::BadRequest("Invalid TARGET_MINUTE".to_string()))?
+    };
     
-    let target_tz_offset = payload.target_tz_offset
-        .or_else(|| env::var("TARGET_TZ_OFFSET").ok().and_then(|v| v.parse::<f64>().ok()))
-        .unwrap_or(payload.tz_offset);
+    let target_tz_offset = match payload.target_tz_offset {
+        Some(tz) => tz,
+        None => env::var("TARGET_TZ_OFFSET").ok()
+            .map(|v| v.parse::<f64>().map_err(|_| AppError::BadRequest("Invalid TARGET_TZ_OFFSET".to_string())))
+            .transpose()?.unwrap_or(payload.tz_offset)
+    };
 
     let transit_jd = compute_jd(
         payload.target_year, 
@@ -221,9 +248,9 @@ pub async fn calculate_chart(Json(payload): Json<ChartRequest>) -> Result<Json<C
 
     // 4. Calculate Panchanga
     let transit_sun = relative_transit_chart.planets.iter().find(|p| p.name == "Sun")
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+        .ok_or_else(|| AppError::InternalError("Planet missing in chart".to_string()))?;
     let transit_moon = relative_transit_chart.planets.iter().find(|p| p.name == "Moon")
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+        .ok_or_else(|| AppError::InternalError("Planet missing in chart".to_string()))?;
 
     let tithi_data = compute_tithi(transit_moon.longitude, transit_sun.longitude);
     let tithi = format!("{} ({})", tithi_data.name, tithi_data.number);
@@ -238,7 +265,7 @@ pub async fn calculate_chart(Json(payload): Json<ChartRequest>) -> Result<Json<C
     let karana = karana_data.name.to_string();
 
     let target_date = NaiveDate::from_ymd_opt(payload.target_year, payload.target_month as u32, payload.target_day as u32)
-        .ok_or(StatusCode::BAD_REQUEST)?;
+        .ok_or_else(|| AppError::BadRequest("Invalid date/time/timezone".to_string()))?;
     let weekday_enum = target_date.weekday();
     let weekday = weekday_enum.to_string();
     let weekday_ruler = match weekday_enum {
@@ -253,7 +280,7 @@ pub async fn calculate_chart(Json(payload): Json<ChartRequest>) -> Result<Json<C
 
     // 5. Calculate Tara Bala
     let birth_moon = natal_chart.planets.iter().find(|p| p.name == "Moon")
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+        .ok_or_else(|| AppError::InternalError("Planet missing in chart".to_string()))?;
     let birth_nak = Nakshatra::from_longitude(birth_moon.longitude);
     let birth_nak_idx = birth_nak.index();
     let transit_nak_idx = nakshatra_data.index();
@@ -295,8 +322,8 @@ pub async fn calculate_chart(Json(payload): Json<ChartRequest>) -> Result<Json<C
     let sav_table = sarvashtakavarga(&bhinna_tables);
 
     let transit_moon_sign_idx = ((transit_moon.longitude as i32) / 30) as usize % 12;
-    let transit_moon_sav = sav_table[transit_moon_sign_idx];
-    let transit_moon_bav = bhinna_tables[1].bindus[transit_moon_sign_idx]; // Moon index is 1
+    let transit_moon_sav = sav_table.get(transit_moon_sign_idx).copied().unwrap_or(0);
+    let transit_moon_bav = bhinna_tables.get(1).and_then(|t| t.bindus.get(transit_moon_sign_idx)).copied().unwrap_or(0);
 
     // 7. Calculate Activated Triggers (Gochara Vedha, Double Transit, Transit-to-Natal Aspect)
     let mut activated_triggers = Vec::new();

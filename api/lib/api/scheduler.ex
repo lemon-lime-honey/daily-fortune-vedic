@@ -39,9 +39,9 @@ defmodule Api.Scheduler do
   end
 
   def calculate_ms_to_next_target() do
-    target_hour = String.to_integer(System.get_env("TARGET_HOUR") || "12")
-    target_minute = String.to_integer(System.get_env("TARGET_MINUTE") || "0")
-    tz_offset = Float.parse(System.get_env("TARGET_TZ_OFFSET") || "9.0") |> elem(0)
+    target_hour = parse_integer_env("TARGET_HOUR", 12)
+    target_minute = parse_integer_env("TARGET_MINUTE", 0)
+    tz_offset = parse_float_env("TARGET_TZ_OFFSET", 9.0)
 
     utc_now = DateTime.utc_now()
     local_now = DateTime.add(utc_now, trunc(tz_offset * 3600), :second)
@@ -62,5 +62,29 @@ defmodule Api.Scheduler do
 
     diff_sec = DateTime.diff(local_target, local_now)
     diff_sec * 1000
+  end
+
+  defp parse_integer_env(key, default) do
+    case System.get_env(key) do
+      nil -> default
+      "" -> default
+      val ->
+        case Integer.parse(val) do
+          {int_val, _} -> int_val
+          :error -> default
+        end
+    end
+  end
+
+  defp parse_float_env(key, default) do
+    case System.get_env(key) do
+      nil -> default
+      "" -> default
+      val ->
+        case Float.parse(val) do
+          {float_val, _} -> float_val
+          :error -> default
+        end
+    end
   end
 end

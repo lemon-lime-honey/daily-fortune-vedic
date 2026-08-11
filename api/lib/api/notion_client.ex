@@ -10,9 +10,8 @@ defmodule Api.NotionClient do
     api_key = System.get_env("NOTION_API_KEY")
     database_id = System.get_env("NOTION_TARGET_ID")
 
-    if is_nil(api_key) or api_key == "" or api_key == "mock_notion_key" do
-      # Mock success during testing/dev if no key is configured
-      {:ok, %{"object" => "page", "id" => "mock_page_id"}}
+    if is_nil(api_key) or api_key == "" do
+      {:error, :missing_api_key}
     else
       url = "https://api.notion.com/v1/pages"
 
@@ -114,7 +113,7 @@ defmodule Api.NotionClient do
         ]
       }
 
-      case Req.post(url, json: body, headers: headers) do
+      case Req.post(url, json: body, headers: headers, connect_timeout: 5_000, receive_timeout: 30_000) do
         {:ok, %Req.Response{status: 200, body: body}} ->
           {:ok, body}
 

@@ -124,3 +124,7 @@ $RECYCLE.BIN/
 # Local Environment Variables
 .env
 
+# etc
+.*/
+AGENTS.md
+CLAUDE.md

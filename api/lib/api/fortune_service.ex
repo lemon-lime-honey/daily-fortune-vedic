@@ -3,31 +3,104 @@ defmodule Api.FortuneService do
   Core service that runs the daily fortune generation pipeline.
   """
   require Logger
-  alias Api.{CalcClient, PromptBuilder, LlmClient, NotionClient}
+  alias Api.{CalcClient, PromptBuilder, LlmClient, NotionClient, Storage}
 
   @doc """
-  Executes the entire daily fortune pipeline from chart calculation to Notion upload.
+  Executes the daily fortune pipeline with local staging and idempotent step resumption.
+  Accepts an optional target_date (YYYY-MM-DD string or Date struct).
   """
-  def run_pipeline() do
-    Logger.info("Starting daily fortune pipeline...")
+  def run_pipeline(target_date \\ nil) do
+    with {:ok, date_str, local_date} <- resolve_target_date(target_date) do
+      Logger.info("Starting daily fortune pipeline for #{date_str}...")
 
-    with {:ok, calc_data} <- get_chart_data_with_retry(),
-         _ <- Logger.info("DEBUG: Raw Calc Data from Rust:\n#{inspect(calc_data, pretty: true)}"),
-         prompt <- PromptBuilder.build_prompt(calc_data),
-         _ <- Logger.info("DEBUG: Generated LLM Prompt:\n#{prompt}"),
-         {:ok, raw_fortune_text} <- generate_fortune_with_retry(prompt),
-         {:ok, parsed_json} <- parse_llm_response(raw_fortune_text),
-         {:ok, _notion_response} <- upload_to_notion_with_retry(calc_data, parsed_json) do
-      Logger.info("Daily fortune pipeline successfully completed.")
-      :ok
-    else
-      {:error, reason} ->
-        Logger.error("Daily fortune pipeline failed: #{inspect(reason)}")
-        {:error, reason}
+      case Storage.get_record(date_str) do
+        {:ok, %{"status" => "synced"}} ->
+          Logger.info("Daily fortune for #{date_str} is already synced. Skipping.")
+          {:ok, :already_synced}
+
+        existing_res ->
+          existing_record =
+            case existing_res do
+              {:ok, rec} -> rec
+              _ -> %{}
+            end
+
+          with {:ok, calc_data} <- ensure_calc_data(date_str, local_date, existing_record),
+               {:ok, parsed_json} <- ensure_llm_result(date_str, calc_data, existing_record),
+               {:ok, _notion_res} <- sync_to_notion(date_str, calc_data, parsed_json) do
+            Logger.info("Daily fortune pipeline successfully completed and synced for #{date_str}.")
+            :ok
+          else
+            {:error, reason} ->
+              Logger.error("Daily fortune pipeline failed for #{date_str}: #{inspect(reason)}")
+              {:error, reason}
+          end
+      end
     end
   end
 
-  def get_chart_data_with_retry() do
+  def resolve_target_date(nil) do
+    with {:ok, target_tz_offset} <- parse_float_env("TARGET_TZ_OFFSET", 9.0) do
+      local_now = DateTime.add(DateTime.utc_now(), trunc(target_tz_offset * 3600), :second)
+      local_date = DateTime.to_date(local_now)
+      {:ok, Date.to_iso8601(local_date), local_date}
+    end
+  end
+
+  def resolve_target_date(%Date{} = local_date) do
+    {:ok, Date.to_iso8601(local_date), local_date}
+  end
+
+  def resolve_target_date(date_str) when is_binary(date_str) do
+    case Date.from_iso8601(date_str) do
+      {:ok, local_date} -> {:ok, date_str, local_date}
+      {:error, reason} -> {:error, {:invalid_target_date, reason}}
+    end
+  end
+
+  defp ensure_calc_data(date_str, local_date, existing_record) do
+    case Map.get(existing_record, "calc_data") do
+      calc_data when is_map(calc_data) and map_size(calc_data) > 0 ->
+        Logger.info("Found existing calculation data for #{date_str} in local storage. Skipping calc API call.")
+        {:ok, calc_data}
+
+      _ ->
+        with {:ok, calc_data} <- get_chart_data_with_retry(local_date) do
+          Logger.info("DEBUG: Raw Calc Data from Rust:\n#{inspect(calc_data, pretty: true)}")
+          Storage.save_calc_data(date_str, calc_data)
+          {:ok, calc_data}
+        end
+    end
+  end
+
+  defp ensure_llm_result(date_str, calc_data, existing_record) do
+    case Map.get(existing_record, "llm_result") do
+      llm_result when is_map(llm_result) and map_size(llm_result) > 0 ->
+        Logger.info("Found existing LLM fortune result for #{date_str} in local storage. Skipping LLM generation.")
+        {:ok, llm_result}
+
+      _ ->
+        prompt = PromptBuilder.build_prompt(calc_data)
+        Logger.info("DEBUG: Generated LLM Prompt:\n#{prompt}")
+
+        with {:ok, raw_fortune_text} <- generate_fortune_with_retry(prompt),
+             {:ok, parsed_json} <- parse_llm_response(raw_fortune_text) do
+          Storage.save_llm_result(date_str, parsed_json)
+          {:ok, parsed_json}
+        end
+    end
+  end
+
+  defp sync_to_notion(date_str, calc_data, parsed_json) do
+    with {:ok, notion_res} <- upload_to_notion_with_retry(date_str, calc_data, parsed_json) do
+      page_id = (is_map(notion_res) && Map.get(notion_res, "id")) || "unknown"
+      now_iso = DateTime.utc_now() |> DateTime.to_iso8601()
+      Storage.mark_synced(date_str, %{"page_id" => page_id, "synced_at" => now_iso})
+      {:ok, notion_res}
+    end
+  end
+
+  def get_chart_data_with_retry(local_date \\ nil) do
     with_retry(fn ->
       with {:ok, birth_lat} <- parse_float_env("BIRTH_LAT", 37.5665),
            {:ok, birth_lon} <- parse_float_env("BIRTH_LON", 126.9780),
@@ -35,8 +108,13 @@ defmodule Api.FortuneService do
            {:ok, target_tz_offset} <- parse_float_env("TARGET_TZ_OFFSET", 9.0),
            {:ok, year, month, day} <- parse_date_env("BIRTH_DATE", "1995-01-01"),
            {:ok, hour, minute} <- parse_time_env("BIRTH_TIME", "12:00:00") do
-        local_now = DateTime.add(DateTime.utc_now(), trunc(target_tz_offset * 3600), :second)
-        local_date = DateTime.to_date(local_now)
+        date =
+          case local_date do
+            %Date{} = d -> d
+            _ ->
+              local_now = DateTime.add(DateTime.utc_now(), trunc(target_tz_offset * 3600), :second)
+              DateTime.to_date(local_now)
+          end
 
         params = %{
           "year" => year,
@@ -47,9 +125,9 @@ defmodule Api.FortuneService do
           "latitude" => birth_lat,
           "longitude" => birth_lon,
           "tz_offset" => birth_tz_offset,
-          "target_year" => local_date.year,
-          "target_month" => local_date.month,
-          "target_day" => local_date.day,
+          "target_year" => date.year,
+          "target_month" => date.month,
+          "target_day" => date.day,
           "target_tz_offset" => target_tz_offset
         }
 
@@ -62,44 +140,36 @@ defmodule Api.FortuneService do
     with_retry(fn -> LlmClient.generate_content(prompt) end)
   end
 
-  def upload_to_notion_with_retry(calc_data, parsed_json) do
+  def upload_to_notion_with_retry(date_str, calc_data, parsed_json) do
     with_retry(fn ->
-      with {:ok, tz_offset} <- parse_float_env("TARGET_TZ_OFFSET", 9.0) do
-        local_now = DateTime.add(DateTime.utc_now(), trunc(tz_offset * 3600), :second)
-        local_date = DateTime.to_date(local_now)
+      dasha_str = calc_data["current_dasha"] || "Unknown"
+      transit_moon = calc_data["transit_moon_house"] || "Unknown"
+      metrics = calc_data["daily_metrics"] || %{}
 
-        date_str =
-          "#{local_date.year}-#{String.pad_leading(to_string(local_date.month), 2, "0")}-#{String.pad_leading(to_string(local_date.day), 2, "0")}"
+      title = parsed_json["keyword"] || "오늘의 운세"
+      content = parsed_json["fortune"] || "운세 내용 없음"
+      score = parsed_json["score"] || 50
 
-        dasha_str = calc_data["current_dasha"] || "Unknown"
-        transit_moon = calc_data["transit_moon_house"] || "Unknown"
-        metrics = calc_data["daily_metrics"] || %{}
+      triggers_list = metrics["activated_triggers"] || []
+      activated_triggers = Enum.map(triggers_list, &(&1["name"] || "Unknown")) |> Enum.uniq()
 
-        title = parsed_json["keyword"] || "오늘의 운세"
-        content = parsed_json["fortune"] || "운세 내용 없음"
-        score = parsed_json["score"] || 50
+      metadata = %{
+        date: date_str,
+        dasha: dasha_str,
+        transit_moon: transit_moon,
+        score: score,
+        tithi: metrics["tithi"] || "Unknown",
+        nakshatra: metrics["nakshatra"] || "Unknown",
+        yoga: metrics["yoga"] || "Unknown",
+        karana: metrics["karana"] || "Unknown",
+        weekday: metrics["weekday"] || "Unknown",
+        tara_bala: metrics["tara_bala_category"] || "Unknown",
+        transit_moon_sav: metrics["transit_moon_sav"] || 0,
+        transit_moon_bav: metrics["transit_moon_bav"] || 0,
+        activated_triggers: activated_triggers
+      }
 
-        triggers_list = metrics["activated_triggers"] || []
-        activated_triggers = Enum.map(triggers_list, &(&1["name"] || "Unknown")) |> Enum.uniq()
-
-        metadata = %{
-          date: date_str,
-          dasha: dasha_str,
-          transit_moon: transit_moon,
-          score: score,
-          tithi: metrics["tithi"] || "Unknown",
-          nakshatra: metrics["nakshatra"] || "Unknown",
-          yoga: metrics["yoga"] || "Unknown",
-          karana: metrics["karana"] || "Unknown",
-          weekday: metrics["weekday"] || "Unknown",
-          tara_bala: metrics["tara_bala_category"] || "Unknown",
-          transit_moon_sav: metrics["transit_moon_sav"] || 0,
-          transit_moon_bav: metrics["transit_moon_bav"] || 0,
-          activated_triggers: activated_triggers
-        }
-
-        NotionClient.append_fortune(title, content, metadata)
-      end
+      NotionClient.append_fortune(title, content, metadata)
     end)
   end
 
@@ -120,7 +190,7 @@ defmodule Api.FortuneService do
     end
   end
 
-  def with_retry(func, retries \\ 3, delay \\ 1000) do
+  def with_retry(func, retries \\ 3, delay \\ 3000) do
     case func.() do
       {:ok, result} ->
         {:ok, result}
@@ -141,6 +211,7 @@ defmodule Api.FortuneService do
   defp should_retry?({:http_error, _status, _}), do: false
   defp should_retry?(:timeout), do: true
   defp should_retry?(:econnrefused), do: true
+  defp should_retry?(%Req.TransportError{}), do: true
   defp should_retry?(_), do: false
 
   defp parse_float_env(key, default) do

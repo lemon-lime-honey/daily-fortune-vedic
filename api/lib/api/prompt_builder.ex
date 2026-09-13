@@ -20,8 +20,10 @@ defmodule Api.PromptBuilder do
     lagna_sign = transit_chart["lagna_sign"] || 3 # Default to Gemini (3) if not found
     asc_sign = Enum.at(@signs, lagna_sign - 1)
 
+    natal_planets = (is_map(natal_chart) && natal_chart["planets"]) || []
+
     natal_planets_str =
-      natal_chart["planets"]
+      natal_planets
       |> Enum.map(fn p ->
         retro = if p["retrograde"] == true, do: " (Retrograde)", else: ""
         "- #{p["name"]}: #{p["sign"]} (House #{p["house"]})#{retro}"
@@ -47,8 +49,10 @@ defmodule Api.PromptBuilder do
         |> Enum.join("\n")
       end
 
+    transit_planets = (is_map(transit_chart) && transit_chart["planets"]) || []
+
     passive_planets_str =
-      transit_chart["planets"]
+      transit_planets
       |> Enum.filter(fn p -> not MapSet.member?(active_planet_names, p["name"]) end)
       |> Enum.map(fn p ->
         retro = if p["retrograde"] == true, do: " (Retrograde)", else: ""

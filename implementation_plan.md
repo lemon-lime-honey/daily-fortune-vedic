@@ -69,3 +69,35 @@
 - **구현**: 모든 컨테이너를 재빌드하고 스케줄러를 가동시켜 전체 워크플로우를 연동합니다.
 - **테스트**: 데이터 추출부터 최종 노션 업로드까지의 흐름이 정상적으로 이어지는지 시스템 로그로 확인합니다.
 - **커밋**: `test: verify end-to-end automated pipeline`
+
+## 6. 로컬 스테이징 기반 데이터 영속화 및 장애 복구 아키텍처
+
+### 6-1. 로컬 저장소 모듈 구현
+
+- **구현**: Elixir `Api.Storage` 모듈을 신설하여 날짜별 JSON 파일 생성, 단계별 상태(`calculated`, `generated`, `synced`) 기록 및 조회를 지원합니다.
+- **테스트**: 단위 테스트를 통해 날짜별 레코드 생성, 갱신, 멱등적 읽기 쓰기를 검증합니다.
+- **커밋**: `feat(api): implement local file storage for fortune records`
+
+### 6-2. 파이프라인 단계별 분리 및 멱등적 재개 로직
+
+- **구현**: `Api.FortuneService`를 리팩토링하여 각 단계(연산, LLM 생성, 노션 동기화) 완료 시 파일에 즉시 영속화하고, 이미 완료된 단계는 건너뛰는 멱등적 재개 구조를 적용합니다.
+- **테스트**: 특정 단계(LLM 또는 노션) 실패를 시뮬레이션하여 이전 단계 데이터 보존 및 다음 재시도 시의 부분 재개를 검증합니다.
+- **커밋**: `feat(api): refactor pipeline to stepwise idempotent execution with local staging`
+
+### 6-3. LLM 모델 교체 및 재시도 백오프 최적화
+
+- **구현**: `.env`의 기본 모델을 `gemini-3.8-flash`로 변경하고, 일시적 부하를 극복할 수 있도록 지수 백오프 지연 시간을 3초, 6초, 12초로 상향 조정합니다.
+- **테스트**: 모의 503 및 실제 호출을 통해 재시도 간격과 정상 수신 동작을 검증합니다.
+- **커밋**: `fix(api): update default llm model to gemini-3.8-flash and optimize backoff`
+
+### 6-4. 스케줄러 단기 재시도 및 시작 시 동기화 보정
+
+- **구현**: `Api.Scheduler`에서 파이프라인 실패 시 24시간 대기 대신 5분 간격 단기 재시도(최대 5회)를 수행하고, 시스템 시작 시 당일 데이터 동기화 여부를 검사하여 자동 보정합니다.
+- **테스트**: 파이프라인 실패 모의 테스트로 5분 재시도 스케줄링 및 당일 미동기화 시의 즉시 실행을 검증합니다.
+- **커밋**: `feat(api): add short-interval retry and startup catch-up to scheduler`
+
+### 6-5. 도커 볼륨 마운트 구성 및 E2E 통합 검증
+
+- **구현**: `docker-compose.yml`의 `api` 서비스에 `./data:/app/data` 볼륨 마운트를 구성하여 컨테이너 수명 주기와 무관하게 데이터를 영구 보존합니다.
+- **테스트**: 전체 컨테이너를 재시동하고 실제 파이프라인 구동 및 호스트 머신의 `data/` 디렉터리 내 JSON 파일 생성을 검증합니다.
+- **커밋**: `build: add persistent data volume to api service in docker-compose`

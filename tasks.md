@@ -28,3 +28,11 @@
 - [x] 5-2. Elixir: 재시도(Retry) 로직 스마트화 및 통신 에러 분기
 - [x] 5-3. Rust: 명시적 에러 타입(AppError) 구현 및 방어적 코드(안전한 인덱싱) 추가
 - [x] 5-4. 테스트 코드 Fail-fast 검증 적용 및 Timeout 설정 최적화
+
+## 6. 로컬 스테이징 기반 데이터 영속화 및 장애 복구 아키텍처
+
+- [x] 6-1. Elixir: 로컬 파일 저장소 모듈 구현 (`Api.Storage`)
+- [ ] 6-2. Elixir: 파이프라인 단계별 분리 및 멱등적 재개 로직 리팩토링 (`Api.FortuneService`)
+- [ ] 6-3. 인프라/설정: LLM 모델 교체(`gemini-3.8-flash`) 및 재시도 백오프 최적화
+- [ ] 6-4. Elixir: 스케줄러 단기 재시도 및 시작 시 동기화 보정 (`Api.Scheduler`)
+- [ ] 6-5. 도커/배포: 호스트 디스크 볼륨 마운트 구성 및 E2E 검증 (`docker-compose.yml`)

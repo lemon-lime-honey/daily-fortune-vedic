@@ -1,6 +1,7 @@
 defmodule Api.Scheduler do
   @moduledoc """
   Task scheduler that runs the fortune pipeline daily at TARGET_HOUR:TARGET_MINUTE.
+  Includes short-interval retry for transient failures and startup catch-up sync.
   """
   use GenServer
   require Logger
@@ -10,10 +11,45 @@ defmodule Api.Scheduler do
   end
 
   @impl true
-  def init(_opts) do
-    # Schedule the first run
-    schedule_next_run()
-    {:ok, %{}}
+  def init(opts) do
+    max_retries = Keyword.get(opts, :max_retries, parse_integer_env("SCHEDULER_MAX_RETRIES", 5))
+    retry_delay_ms = Keyword.get(opts, :retry_delay_ms, parse_integer_env("SCHEDULER_RETRY_DELAY_MS", 300_000))
+    enable_startup_check = Keyword.get(opts, :startup_check, System.get_env("DISABLE_STARTUP_CHECK") != "true")
+
+    state = %{
+      retry_count: 0,
+      max_retries: max_retries,
+      retry_delay_ms: retry_delay_ms
+    }
+
+    if enable_startup_check do
+      Process.send_after(self(), :startup_check, 1000)
+    else
+      schedule_next_target_run()
+    end
+
+    {:ok, state}
+  end
+
+  @impl true
+  def handle_info(:startup_check, state) do
+    with {:ok, date_str, _} <- Api.FortuneService.resolve_target_date(nil) do
+      case Api.Storage.get_record(date_str) do
+        {:ok, %{"status" => "synced"}} ->
+          Logger.info("Startup check: Fortune for #{date_str} is already synced. Scheduling next target run.")
+          schedule_next_target_run()
+          {:noreply, state}
+
+        _ ->
+          Logger.info("Startup check: Fortune for #{date_str} is not synced yet. Executing pipeline now.")
+          send(self(), :run_pipeline)
+          {:noreply, state}
+      end
+    else
+      _ ->
+        schedule_next_target_run()
+        {:noreply, state}
+    end
   end
 
   @impl true
@@ -23,22 +59,39 @@ defmodule Api.Scheduler do
     case Api.FortuneService.run_pipeline() do
       :ok ->
         Logger.info("Scheduled pipeline run completed successfully.")
+        schedule_next_target_run()
+        {:noreply, %{state | retry_count: 0}}
+
+      {:ok, :already_synced} ->
+        Logger.info("Scheduled pipeline run skipped: already synced.")
+        schedule_next_target_run()
+        {:noreply, %{state | retry_count: 0}}
 
       {:error, reason} ->
         Logger.error("Scheduled pipeline run failed: #{inspect(reason)}")
-    end
+        current_retries = state.retry_count
+        max_retries = state.max_retries
 
-    schedule_next_run()
-    {:noreply, state}
+        if current_retries < max_retries do
+          delay = state.retry_delay_ms
+          Logger.warning("Scheduling short retry #{current_retries + 1}/#{max_retries} in #{delay / 1000} seconds.")
+          Process.send_after(self(), :run_pipeline, delay)
+          {:noreply, %{state | retry_count: current_retries + 1}}
+        else
+          Logger.error("Max retries (#{max_retries}) exhausted. Scheduling next regular target run.")
+          schedule_next_target_run()
+          {:noreply, %{state | retry_count: 0}}
+        end
+    end
   end
 
-  defp schedule_next_run() do
+  def schedule_next_target_run do
     ms_to_wait = calculate_ms_to_next_target()
     Logger.info("Next pipeline run scheduled in #{ms_to_wait / 1000} seconds.")
     Process.send_after(self(), :run_pipeline, ms_to_wait)
   end
 
-  def calculate_ms_to_next_target() do
+  def calculate_ms_to_next_target do
     target_hour = parse_integer_env("TARGET_HOUR", 12)
     target_minute = parse_integer_env("TARGET_MINUTE", 0)
     tz_offset = parse_float_env("TARGET_TZ_OFFSET", 9.0)

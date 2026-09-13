@@ -35,4 +35,4 @@
 - [x] 6-2. Elixir: 파이프라인 단계별 분리 및 멱등적 재개 로직 리팩토링 (`Api.FortuneService`)
 - [x] 6-3. 인프라/설정: LLM 모델 교체(`gemini-3.8-flash`) 및 재시도 백오프 최적화
 - [x] 6-4. Elixir: 스케줄러 단기 재시도 및 시작 시 동기화 보정 (`Api.Scheduler`)
-- [ ] 6-5. 도커/배포: 호스트 디스크 볼륨 마운트 구성 및 E2E 검증 (`docker-compose.yml`)
+- [x] 6-5. 도커/배포: 호스트 디스크 볼륨 마운트 구성 및 E2E 검증 (`docker-compose.yml`)

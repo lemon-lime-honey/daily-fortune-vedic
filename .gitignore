@@ -124,6 +124,10 @@ $RECYCLE.BIN/
 # Local Environment Variables
 .env
 
+# Application data
+/data/
+api/data/
+
 # etc
 .*/
 AGENTS.md
